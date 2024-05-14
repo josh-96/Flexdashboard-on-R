@@ -1,0 +1,238 @@
+---
+title: "Add theme"
+author: "Josue Velasco"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: scroll
+    orientation: rows
+    social: menu
+    source_code: embed
+    theme : united
+---
+
+```{r setup, include=FALSE}
+library(readxl)
+setwd("set_path")
+data <- read.csv("set_path/surf_data.csv", header = TRUE, sep = ",")
+
+```
+
+# Surf
+
+## Row {data-height="500"}
+
+### Surf quality rating by time
+
+```{r}
+library(tidyverse)
+
+data$days <- factor(data$days, levels = unique(data$days))
+
+data$jours <- gsub(".* (\\d+) (\\w+).*", "\\1/\\2", data$days)
+data$jours <- factor(data$jours, levels = unique(data$jours))
+# Affichage des données transformées
+
+ggplot(data, aes(x = jours, y = times, color = factor(star))) +
+  geom_point(size = 4) +
+  labs(title = "Surf Quality Ratings by Time", x = "Days", y = "Times", color = "Star Rating") +
+  theme_minimal() +
+  guides(color = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 1, byrow = TRUE)) +
+  theme(
+    legend.position = "bottom",  # Place la légende en bas
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Incline le texte de l'axe x pour une meilleure lisibilité
+    plot.title = element_text(hjust = 0.5)  # Centre le titre du graphique
+  )
+
+```
+
+## Row {data-height="500"}
+
+### Overview
+
+```{r}
+
+# Charger le package DT
+library(DT)
+
+
+# Créer une nouvelle table
+new_table <- data.frame(
+  day = data$days,
+  hour = data$times,
+  wave_size = data$vague,
+  direction = data$orientation_vent
+)
+
+# Afficher le tableau interactif avec DT::datatable
+DT::datatable(new_table, width = "30%")
+
+
+```
+
+
+
+
+### Wave size over time
+
+
+```{r}
+
+
+# Convert vague column to numeric by taking the mean of the range
+data$vague <- sapply(data$vague, function(range) mean(as.numeric(strsplit(range, " - ")[[1]])))
+
+# Create the plot with ggplot2
+ggplot(data = data, aes(x = times, y = vague, group = days, color = days)) +
+  geom_line(size = 1.5) +
+  labs(title = "Mean Wave Size Over Time",
+       x = "Time",
+       y = "Mean Wave Size",
+       color = "Days") +
+  theme_minimal()
+
+```
+
+
+## Row {data-height="500"}
+
+### Wind speed over time
+
+
+```{r}
+library(ggplot2)
+
+# Convert vitesse_vent column to numeric
+data$vitesse_vent <- as.numeric(data$vitesse_vent)
+
+# Create the plot with ggplot2
+ggplot(data = data, aes(x = times, y = vitesse_vent, group = days, color = days)) +
+  geom_line(linewidth = 1.5) +
+  labs(title = "Wind Speed Over Time",
+       x = "Time",
+       y = "Wind Speed",
+       color = "Days") +
+  theme_minimal()
+
+```
+
+
+
+
+### Highest wave of the week
+
+
+```{r}
+
+library(ggplot2)
+
+
+# Ensure that vague column is converted to character before applying strsplit
+data$vague <- as.character(data$vague)
+
+# Convert vague column to numeric by taking the maximum of the range
+data$vague <- sapply(data$vague, function(range) {
+  if (is.character(range)) {
+    max(as.numeric(strsplit(range, " - ")[[1]]))
+  } else {
+    # Handle non-character cases, you might want to modify this part based on your data
+    NA
+  }
+})
+
+# Create the boxplot with ggplot2
+ggplot(data = data, aes(x = days, y = vague, fill = days)) +
+  geom_boxplot() +
+  labs(title = "Highest Wave of the Week",
+       x = "Day",
+       y = "Highest Wave",
+       fill = "Days") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+
+```
+
+
+
+## Row {data-height="800"}
+
+### Dispersion of best moments to surf
+
+
+```{r}
+
+# Extract the minimum and maximum values from the vague range
+data <- data %>%
+  mutate(vague = as.character(vague),
+         vague_min = sapply(vague, function(range) min(as.numeric(strsplit(range, " - ")[[1]]))),
+         vague_max = sapply(vague, function(range) max(as.numeric(strsplit(range, " - ")[[1]]))),
+         sea_quality = ifelse((vague_min <= 1.0) & vitesse_vent <= 50 & grepl("Nord", orientation_vent), "Good", "Not Good"))
+
+data$vague_max <- ifelse(is.na(data$vague_max), 0, data$vague_max)
+df_vm <- data %>%
+  filter(vague_max == max(vague_max))
+
+
+print(min(data$vague_max))
+# Créer le graphique de dispersion avec des points seulement pour les valeurs spécifiques de "star"
+ggplot() +
+  geom_point(data = data, aes(y = times, x = days), color = "gray") +
+  geom_point(data = df_vm, aes(y = times, x = days), color = "blue", size = 3) +
+  labs(title = "Diagramme de dispersion pour les meilleurs moments",
+       y = "Heure",
+       x = "Jour")+
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+## Row {data-height="800"}
+
+### Quality of the sea
+
+
+```{r}
+# Définir les poids
+poids_vague_max <- 0.4
+poids_vitesse_vent <- 0.3
+poids_direction_vent <- 0.3
+
+# Calculer les pourcentages pour chaque critère
+pourcentage_vague_max <- ifelse(data$vague_max < 2.5, 100, ifelse(data$vague_max < 3, 75, ifelse(data$vague_max < 4, 50, ifelse(data$vague_max < 5, 25, 0))))
+pourcentage_vitesse_vent <- ifelse(data$vitesse_vent < 20, 100, ifelse(data$vitesse_vent < 30, 75, ifelse(data$vitesse_vent < 40, 50, ifelse(data$vitesse_vent < 50, 25, 0))))
+pourcentage_direction_vent <- ifelse(grepl("Nord", data$orientation_vent), 100, 0)
+
+# Calculer la note qualité de la mer en agrégeant les pourcentages avec les poids
+data$note_qualite_mer <- (pourcentage_vague_max * poids_vague_max + pourcentage_vitesse_vent * poids_vitesse_vent + pourcentage_direction_vent * poids_direction_vent) / (poids_vague_max + poids_vitesse_vent + poids_direction_vent)
+
+df_bm = subset(data, star >= 2)
+
+
+# Créer le graphique de la jauge
+fig <- plot_ly(
+  type = "indicator",
+  mode = "gauge+number+delta",
+  value = mean(df_bm$note_qualite_mer),
+  title = list(text = "Moyenne Qualité de la mer"),
+  gauge = list(
+    axis = list(range = list(0, 100)),
+    bar = list(color = "gray"),
+    steps = list(
+      list(range = c(0, 100), color = "red"), # Afficher la couleur verte seulement jusqu'au seuil
+      list(range = c(100, 100), color = "green") # La partie au-dessus du seuil sera verte
+    ),
+    threshold = list(
+      line = list(color = "blue", width = 4),
+      thickness = 0.75,
+      value = mean(df_bm$note_qualite_mer)
+    )
+  )
+)
+
+fig
+
+```
+
+
+
+
